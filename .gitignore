@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+payroll.db
+instance/
+.DS_Store
+uploads/*.csv

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}WarpLine Payroll{% endblock %}</title>
+    <style>
+        :root {
+            --navy: #0e3a52;
+            --navy-dark: #0a2c3f;
+            --teal: #17a3a3;
+            --teal-light: #e6f6f6;
+            --paper: #f7f8f9;
+            --ink: #1c2b33;
+            --muted: #6b7c85;
+            --border: #dde3e6;
+            --amber: #c98a1f;
+            --green: #1f8a5f;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--paper);
+            color: var(--ink);
+        }
+        header.topbar {
+            background: var(--navy);
+            color: white;
+            padding: 18px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header.topbar .brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+        header.topbar .brand span { color: var(--teal); }
+        header.topbar .tag {
+            font-size: 0.78rem;
+            color: #b9cdd6;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+        .card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px 28px;
+            margin-bottom: 20px;
+        }
+        h1 { font-size: 1.5rem; margin: 0 0 4px 0; color: var(--navy-dark); }
+        h2 { font-size: 1.1rem; color: var(--navy-dark); margin-top: 0; }
+        .subtitle { color: var(--muted); margin: 0 0 20px 0; font-size: 0.95rem; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; }
+        tr:hover td { background: var(--teal-light); }
+        .btn {
+            display: inline-block;
+            background: var(--teal);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn:hover { background: #128888; }
+        .btn.secondary { background: transparent; color: var(--navy); border: 1px solid var(--border); }
+        .btn.secondary:hover { background: var(--paper); }
+        input[type=text], input[type=file], input[type=number] {
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            width: 100%;
+        }
+        input[type=number] { width: 64px; padding: 6px; }
+        .flash {
+            padding: 10px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
+        .flash.error { background: #fdecea; color: #b3261e; border: 1px solid #f5c2c0; }
+        .flash.success { background: #e8f7f1; color: var(--green); border: 1px solid #b9e6d1; }
+        .pill {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: var(--teal-light);
+            color: var(--teal);
+        }
+        .division-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+        .division-block h4 { margin: 0 0 8px 0; font-size: 0.85rem; color: var(--navy); }
+        .field-row { display: flex; gap: 14px; }
+        .field-row label { font-size: 0.72rem; color: var(--muted); display: block; margin-bottom: 3px; }
+        .agent-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+        .agent-card summary { cursor: pointer; font-weight: 600; color: var(--navy-dark); list-style: none; }
+        .agent-card summary::-webkit-details-marker { display: none; }
+        .agent-card summary::before { content: '▸ '; color: var(--teal); }
+        .agent-card[open] summary::before { content: '▾ '; }
+        .total-strip { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 4px 0; }
+        .total-strip .amount { font-size: 1.6rem; font-weight: 700; color: var(--navy-dark); }
+        .assumption-note {
+            background: #fff8e8;
+            border: 1px solid #f0dba0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+            color: #7a5a12;
+            margin-bottom: 20px;
+        }
+        .muted { color: var(--muted); font-size: 0.85rem; }
+        a { color: var(--teal); }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">Warp<span>Line</span> Payroll</div>
+        <div class="tag">Internal Prototype</div>
+    </header>
+    <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

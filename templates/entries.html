@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Campaign Data - {{ period.label }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>{{ period.label }}</h1>
+    <p class="subtitle">Step 2 of 3 — Enter pay details, valid sits &amp; sales per campaign for each agent</p>
+</div>
+
+<div class="assumption-note">
+    <strong>Mirrors the client's existing process:</strong> Hourly Rate, Manual Hours, and
+    Spiffs are set directly per agent, same as their current sheet. Manual Hours defaults
+    to 0 and only affects pay if you enter something. An agent can be entered into
+    <strong>more than one campaign</strong> below for commission purposes — leave a
+    division's fields blank if the agent didn't work it this period.
+</div>
+
+<form method="POST">
+<div class="card">
+    {% for te in time_entries %}
+    {% set safe_name = te.agent_name.replace(' ', '_') %}
+    <details class="agent-card" {% if loop.first %}open{% endif %}>
+        <summary>{{ te.agent_name }} <span class="pill">{{ te.total_hours }} total hrs logged</span></summary>
+        <div style="margin-top: 14px;">
+
+        <div class="division-block" style="background:#f7fbfb;">
+            <h4>Pay for this period</h4>
+            <div class="field-row">
+                <div>
+                    <label>Hourly Rate (USD)</label>
+                    <input type="number" step="0.01" min="0" name="{{ safe_name }}__hourly_rate"
+                           value="{{ te.hourly_rate if te.hourly_rate is not none else '' }}" placeholder="3.00">
+                </div>
+                <div>
+                    <label>Manual Hours</label>
+                    <input type="number" step="0.01" min="0" name="{{ safe_name }}__manual_hours"
+                           value="{{ te.manual_hours if te.manual_hours else '' }}" placeholder="0.00">
+                </div>
+                <div>
+                    <label>Spiffs (+/-)</label>
+                    <input type="number" step="0.01" name="{{ safe_name }}__spiffs"
+                           value="{{ te.spiffs if te.spiffs else '' }}" placeholder="0.00">
+                </div>
+            </div>
+            <p class="muted" style="margin: 8px 0 0 0;">Set directly, same as your existing sheet.</p>
+        </div>
+
+        {% for div_key, div in divisions.items() %}
+            {% set current = existing.get(te.agent_name, {}).get(div_key) %}
+            <div class="division-block">
+                <h4>{{ div.label }}</h4>
+                <div class="field-row">
+                    <div>
+                        <label>Valid Sits</label>
+                        <input type="number" min="0" name="{{ safe_name }}__{{ div_key }}__sits"
+                               value="{{ current.valid_sits if current else '' }}">
+                    </div>
+                    <div>
+                        <label>Sales</label>
+                        <input type="number" min="0" name="{{ safe_name }}__{{ div_key }}__sales"
+                               value="{{ current.sales if current else '' }}">
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    </details>
+    {% endfor %}
+
+    <button class="btn" type="submit">Calculate Payroll →</button>
+</div>
+</form>
+{% endblock %}

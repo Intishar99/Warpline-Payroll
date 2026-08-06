@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Upload - {{ period.label }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>{{ period.label }}</h1>
+    <p class="subtitle">Step 1 of 3 — Upload the raw dialer export (hours &amp; time breakdown per agent)</p>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="raw_csv" accept=".csv" required style="margin-bottom: 16px;">
+        <br>
+        <button class="btn" type="submit">Upload &amp; Parse</button>
+    </form>
+</div>
+<div class="card">
+    <h2>What this does</h2>
+    <p class="muted">
+        We read <code>Break, Training, Lunch, Manual Dial, Talk, Wait, Wrap</code> time columns
+        from the raw export, convert every duration to decimal hours, and total them per agent.
+        No manual duration math needed. Next step lets you enter appointments / sits / sales
+        per campaign for each agent.
+    </p>
+</div>
+{% endblock %}

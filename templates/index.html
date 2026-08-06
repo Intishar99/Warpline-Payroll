@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Pay Periods - WarpLine Payroll{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Pay Periods</h1>
+    <p class="subtitle">Start a new pay run, or jump back into one in progress.</p>
+    <form method="POST" action="{{ url_for('new_period') }}" style="display:flex; gap:10px; align-items:flex-end;">
+        <div>
+            <label style="display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px;">From</label>
+            <input type="date" name="start_date" required>
+        </div>
+        <div>
+            <label style="display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px;">To</label>
+            <input type="date" name="end_date" required>
+        </div>
+        <button class="btn" type="submit">+ New Pay Period</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>History</h2>
+    {% if periods %}
+    <table>
+        <thead><tr><th>Pay Period</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+        {% for p in periods %}
+            <tr>
+                <td>{{ p.label }}</td>
+                <td class="muted">{{ p.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+                <td>
+                    <a class="btn secondary" href="{{ url_for('upload_page', period_id=p.id) }}">Upload / Edit</a>
+                    <a class="btn secondary" href="{{ url_for('results_page', period_id=p.id) }}">Results</a>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No pay periods yet — create one above to get started.</p>
+    {% endif %}
+</div>
+{% endblock %}

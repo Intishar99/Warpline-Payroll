@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Payroll Results - {{ period.label }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>{{ period.label }}</h1>
+    <p class="subtitle">Step 3 of 3 — Calculated payroll, ready to review and export</p>
+    <div class="total-strip">
+        <div class="muted">Total payout across {{ payroll_rows|length }} agents</div>
+        <div class="amount">${{ "%.2f"|format(grand_total) }}</div>
+    </div>
+    <a class="btn" href="{{ url_for('export_xlsx', period_id=period.id) }}">⬇ Download Finalised Payroll (.xlsx)</a>
+    <a class="btn" href="{{ url_for('download_paystubs', period_id=period.id) }}">⬇ Download All Paystubs (.zip)</a>
+    <a class="btn secondary" href="{{ url_for('entries_page', period_id=period.id) }}">← Edit Campaign Data</a>
+</div>
+
+<div class="card">
+    {% for row in payroll_rows %}
+    <details class="agent-card">
+        <summary>
+            {{ row.name }}
+            <span class="pill">${{ "%.2f"|format(row.gross_pay) }}</span>
+        </summary>
+        <div style="margin-top: 12px;">
+            <table>
+                <tr><td class="muted">Hours worked</td><td>{{ row.total_hours }}</td></tr>
+                {% if row.manual_hours %}
+                <tr><td class="muted">Manual hours</td><td>{{ row.manual_hours }}</td></tr>
+                <tr><td class="muted">Effective hours</td><td>{{ row.effective_hours }}</td></tr>
+                {% endif %}
+                <tr><td class="muted">Hourly rate</td><td>${{ "%.2f"|format(row.hourly_rate) }} / hr</td></tr>
+                <tr><td class="muted">Hours pay</td><td>${{ "%.2f"|format(row.hours_pay) }}</td></tr>
+                <tr><td class="muted">Commission (sits + sales)</td><td>${{ "%.2f"|format(row.commission_total) }}</td></tr>
+                <tr><td class="muted">Spiffs</td><td>${{ "%.2f"|format(row.spiffs) }}</td></tr>
+                <tr><td class="muted">Bonuses</td><td>${{ "%.2f"|format(row.bonus_total) }}
+                    {% if row.bonuses_earned %}<br><span class="muted">{{ row.bonuses_earned|join(', ') }}</span>{% endif %}
+                </td></tr>
+                <tr><td><strong>Gross pay</strong></td><td><strong>${{ "%.2f"|format(row.gross_pay) }}</strong></td></tr>
+            </table>
+
+            {% if row.campaign_breakdown %}
+            <h4 style="margin-top:16px; font-size:0.85rem; color: var(--navy);">Campaign breakdown</h4>
+            <table>
+                <thead>
+                    <tr><th>Division</th><th>Sits</th><th>Sales</th><th>Sit Pay</th><th>Sale Pay</th><th>Bonus</th></tr>
+                </thead>
+                <tbody>
+                {% for c in row.campaign_breakdown %}
+                    <tr>
+                        <td>{{ c.division }}</td>
+                        <td>{{ c.valid_sits }}</td>
+                        <td>{{ c.sales }}</td>
+                        <td>${{ "%.2f"|format(c.sit_pay) }}</td>
+                        <td>${{ "%.2f"|format(c.sale_pay) }}</td>
+                        <td>${{ "%.2f"|format(c.bonus_pay) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted">No campaign data entered — paid at base rate ($3.00/hr).</p>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+</div>
+{% endblock %}
