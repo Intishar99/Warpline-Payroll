@@ -4,11 +4,14 @@ import zipfile
 from datetime import datetime, date
 
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, send_file
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
+from werkzeug.security import check_password_hash
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
-from models import db, PayPeriod, TimeEntry, CampaignEntry
+from models import db, PayPeriod, TimeEntry, CampaignEntry, AdminUser
 from parsers import parse_raw_payroll_csv
 from calc_engine import DIVISIONS, calc_agent_payroll
 from paystub_generator import generate_paystub_docx
@@ -33,6 +36,19 @@ else:
 app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
 
 db.init_app(app)
+csrf = CSRFProtect(app)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Please log in to access WarpLine Payroll."
+login_manager.login_message_category = "error"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return AdminUser.query.get(int(user_id))
+
 
 with app.app_context():
     db.create_all()
@@ -72,13 +88,45 @@ def get_agent_results(period):
     return payroll_rows, round(grand_total, 2)
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        user = AdminUser.query.filter_by(username=username).first()
+        # Intentionally vague error -- doesn't reveal whether the username or
+        # password was the wrong part, standard practice against credential probing.
+        if user is None or not check_password_hash(user.password_hash, password):
+            flash("Incorrect username or password.", "error")
+            return redirect(url_for("login"))
+
+        login_user(user)
+        next_page = request.args.get("next")
+        return redirect(next_page or url_for("index"))
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
     periods = PayPeriod.query.order_by(PayPeriod.created_at.desc()).all()
     return render_template("index.html", periods=periods)
 
 
 @app.route("/period/new", methods=["POST"])
+@login_required
 def new_period():
     start_str = request.form.get("start_date", "").strip()
     end_str = request.form.get("end_date", "").strip()
@@ -105,6 +153,7 @@ def new_period():
 
 
 @app.route("/period/<int:period_id>/upload", methods=["GET", "POST"])
+@login_required
 def upload_page(period_id):
     period = PayPeriod.query.get_or_404(period_id)
 
@@ -144,6 +193,7 @@ def upload_page(period_id):
 
 
 @app.route("/period/<int:period_id>/entries", methods=["GET", "POST"])
+@login_required
 def entries_page(period_id):
     period = PayPeriod.query.get_or_404(period_id)
     time_entries = TimeEntry.query.filter_by(pay_period_id=period.id).order_by(TimeEntry.agent_name).all()
@@ -195,6 +245,7 @@ def entries_page(period_id):
 
 
 @app.route("/period/<int:period_id>/results")
+@login_required
 def results_page(period_id):
     period = PayPeriod.query.get_or_404(period_id)
     payroll_rows, grand_total = get_agent_results(period)
@@ -202,6 +253,7 @@ def results_page(period_id):
 
 
 @app.route("/period/<int:period_id>/export.xlsx")
+@login_required
 def export_xlsx(period_id):
     """Finalised payroll export, formatted to match the structure of the client's
     existing sheet (time breakdown columns, per-division sits, hourly rate, totals)."""
@@ -285,6 +337,7 @@ def export_xlsx(period_id):
 
 
 @app.route("/period/<int:period_id>/paystubs.zip")
+@login_required
 def download_paystubs(period_id):
     period = PayPeriod.query.get_or_404(period_id)
     payroll_rows, _ = get_agent_results(period)

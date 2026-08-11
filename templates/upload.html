@@ -5,6 +5,7 @@
     <h1>{{ period.label }}</h1>
     <p class="subtitle">Step 1 of 3 — Upload the raw dialer export (hours &amp; time breakdown per agent)</p>
     <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="file" name="raw_csv" accept=".csv" required style="margin-bottom: 16px;">
         <br>
         <button class="btn" type="submit">Upload &amp; Parse</button>

@@ -5,6 +5,7 @@
     <h1>Pay Periods</h1>
     <p class="subtitle">Start a new pay run, or jump back into one in progress.</p>
     <form method="POST" action="{{ url_for('new_period') }}" style="display:flex; gap:10px; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
             <label style="display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px;">From</label>
             <input type="date" name="start_date" required>

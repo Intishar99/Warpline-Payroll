@@ -130,7 +130,14 @@
 <body>
     <header class="topbar">
         <div class="brand">Warp<span>Line</span> Payroll</div>
+        {% if current_user.is_authenticated %}
+        <div style="display:flex; align-items:center; gap:16px;">
+            <span class="tag">{{ current_user.username }}</span>
+            <a href="{{ url_for('logout') }}" style="color:#b9cdd6; font-size:0.8rem; text-decoration:underline;">Log out</a>
+        </div>
+        {% else %}
         <div class="tag">Internal Prototype</div>
+        {% endif %}
     </header>
     <main>
         {% with messages = get_flashed_messages(with_categories=true) %}
