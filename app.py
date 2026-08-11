@@ -17,7 +17,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-key-change-in-production")
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(BASE_DIR, 'payroll.db')}"
+
+# Render (and most hosts) provide DATABASE_URL for Postgres. Falls back to local
+# SQLite when that's not set, so local dev still works with zero extra setup.
+database_url = os.environ.get("DATABASE_URL")
+if database_url:
+    # SQLAlchemy 1.4+ requires the 'postgresql://' scheme, but Render (and Heroku,
+    # historically) hand back 'postgres://' -- this rewrites it so both work.
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(BASE_DIR, 'payroll.db')}"
+
 app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
 
 db.init_app(app)
