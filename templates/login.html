@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Log In - WarpLine Payroll{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 380px; margin: 60px auto;">
+    <h1 style="text-align:center;">WarpLine Payroll</h1>
+    <p class="subtitle" style="text-align:center;">Admin sign-in</p>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:block; font-size:0.72rem; color: var(--muted); margin: 12px 0 4px;">Username</label>
+        <input type="text" name="username" required autofocus>
+        <label style="display:block; font-size:0.72rem; color: var(--muted); margin: 12px 0 4px;">Password</label>
+        <input type="password" name="password" required>
+        <button class="btn" type="submit" style="width:100%; margin-top:20px;">Log In</button>
+    </form>
+</div>
+{% endblock %}

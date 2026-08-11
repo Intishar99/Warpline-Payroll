@@ -15,6 +15,7 @@
 </div>
 
 <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">
     {% for te in time_entries %}
     {% set safe_name = te.agent_name.replace(' ', '_') %}

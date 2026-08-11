@@ -1,7 +1,17 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
 from datetime import datetime
 
 db = SQLAlchemy()
+
+
+class AdminUser(UserMixin, db.Model):
+    """Admin login accounts. No self-registration -- created only via seed_admins.py,
+    run directly by the dev team. UserMixin gives Flask-Login the methods it needs
+    (is_authenticated, get_id, etc.) for free."""
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
 
 
 class PayPeriod(db.Model):
