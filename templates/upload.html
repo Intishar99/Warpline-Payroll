@@ -14,10 +14,9 @@
 <div class="card">
     <h2>What this does</h2>
     <p class="muted">
-        We read <code>Break, Training, Lunch, Manual Dial, Talk, Wait, Wrap</code> time columns
-        from the raw export, convert every duration to decimal hours, and total them per agent.
-        No manual duration math needed. Next step lets you enter appointments / sits / sales
-        per campaign for each agent.
+        We read <code>Break, Training, Lunch, Manual Dial, Talk, Wait, Wrap</code> time columns,
+        convert every duration to decimal hours, and total them per agent. If Wrap Time exceeds
+        2 hours, it's dropped entirely from that agent's total (confirmed policy rule).
     </p>
 </div>
 {% endblock %}

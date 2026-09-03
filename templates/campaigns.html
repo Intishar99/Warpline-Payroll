@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Manage Campaigns - WarpLine Payroll{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Manage Campaigns</h1>
+    <p class="subtitle">Solar, Roofing IL/IA, Roofing OK/TX, and Roofing (Retail) are pre-filled from the compensation policy. Add new campaigns as they come up (e.g. Phntm) — their tier table starts empty until you fill it in.</p>
+    <form method="POST" action="{{ url_for('new_campaign') }}" style="display:flex; gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="New campaign name, e.g. Phntm" required>
+        <button class="btn" type="submit">+ Add Campaign</button>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead><tr><th>Campaign</th><th>$/Sit</th><th>$/Sale</th><th>Tier Rows</th><th></th></tr></thead>
+        <tbody>
+        {% for c in campaigns %}
+            <tr>
+                <td>{{ c.name }}</td>
+                <td>${{ "%.2f"|format(c.sit_commission) }}</td>
+                <td>${{ "%.2f"|format(c.sale_commission) }}</td>
+                <td>{{ c.tiers|length }}{% if c.tiers|length == 0 %} <span class="muted">(not set yet)</span>{% endif %}</td>
+                <td>
+                    <a class="btn secondary" href="{{ url_for('edit_campaign', campaign_id=c.id) }}">Edit</a>
+                    <form method="POST" action="{{ url_for('delete_campaign', campaign_id=c.id) }}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn danger" type="submit" onclick="return confirm('Delete {{ c.name }}?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

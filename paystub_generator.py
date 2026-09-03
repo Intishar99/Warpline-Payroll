@@ -1,8 +1,5 @@
 """
 Generates a WarpLine-branded paystub as an editable .docx file, one per agent.
-
-Same approach as the SBG report card generator this was modeled on: build with
-python-docx, return a BytesIO buffer ready to zip up and send to the browser.
 """
 
 import os
@@ -42,10 +39,6 @@ def _add_row(table, label, value, bold=False, value_color=None):
 
 
 def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
-    """
-    payroll_result: the dict returned by calc_engine.calc_agent_payroll, plus
-    'name' and 'total_hours' as added by app.py's get_agent_results().
-    """
     doc = Document()
     section = doc.sections[0]
     section.left_margin = Inches(0.8)
@@ -68,7 +61,6 @@ def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
 
     doc.add_paragraph()
 
-    # --- Hours & rate ---
     heading = doc.add_paragraph()
     heading.add_run("Hours & Rate").bold = True
     heading.runs[0].font.color.rgb = NAVY
@@ -80,7 +72,7 @@ def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
     table.columns[0].width = Inches(3.2)
     table.columns[1].width = Inches(2.5)
 
-    _add_row(table, "Hours Worked", f"{payroll_result['total_hours']:.2f}")
+    _add_row(table, "Hours Worked", f"{payroll_result['effective_hours'] - payroll_result['manual_hours']:.2f}")
     if payroll_result.get("manual_hours"):
         _add_row(table, "Manual Hours", f"{payroll_result['manual_hours']:.2f}")
         _add_row(table, "Effective Hours", f"{payroll_result['effective_hours']:.2f}")
@@ -89,17 +81,16 @@ def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
 
     doc.add_paragraph()
 
-    # --- Campaign commission breakdown ---
     if payroll_result["campaign_breakdown"]:
         heading = doc.add_paragraph()
         heading.add_run("Campaign Commission").bold = True
         heading.runs[0].font.color.rgb = NAVY
         heading.runs[0].font.size = Pt(12)
 
-        comm_table = doc.add_table(rows=1, cols=4)
+        comm_table = doc.add_table(rows=1, cols=5)
         comm_table.style = "Table Grid"
         hdr = comm_table.rows[0].cells
-        for i, label in enumerate(["Division", "Valid Sits", "Sales", "Commission"]):
+        for i, label in enumerate(["Campaign", "Appointments", "Valid Sits", "Sales", "Commission"]):
             hdr[i].text = label
             hdr[i].paragraphs[0].runs[0].bold = True
             hdr[i].paragraphs[0].runs[0].font.size = Pt(10)
@@ -108,28 +99,16 @@ def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
 
         for c in payroll_result["campaign_breakdown"]:
             row = comm_table.add_row().cells
-            row[0].text = c["division"]
-            row[1].text = str(c["valid_sits"])
-            row[2].text = str(c["sales"])
-            row[3].text = f"${c['sit_pay'] + c['sale_pay']:.2f}"
+            row[0].text = c["campaign_name"]
+            row[1].text = str(c["appointments"])
+            row[2].text = str(c["valid_sits"])
+            row[3].text = str(c["sales"])
+            row[4].text = f"${c['sit_pay'] + c['sale_pay']:.2f}"
             for cell in row:
                 cell.paragraphs[0].runs[0].font.size = Pt(10)
 
         doc.add_paragraph()
 
-    # --- Bonuses ---
-    if payroll_result["bonuses_earned"]:
-        heading = doc.add_paragraph()
-        heading.add_run("Bonuses Earned").bold = True
-        heading.runs[0].font.color.rgb = NAVY
-        heading.runs[0].font.size = Pt(12)
-        for bonus_line in payroll_result["bonuses_earned"]:
-            p = doc.add_paragraph(style=None)
-            run = p.add_run(f"\u2022 {bonus_line}")
-            run.font.size = Pt(10)
-        doc.add_paragraph()
-
-    # --- Summary ---
     heading = doc.add_paragraph()
     heading.add_run("Summary").bold = True
     heading.runs[0].font.color.rgb = NAVY
@@ -142,7 +121,6 @@ def generate_paystub_docx(agent_name, pay_period_label, payroll_result):
 
     _add_row(summary_table, "Hours Pay", f"${payroll_result['hours_pay']:.2f}")
     _add_row(summary_table, "Commission Total", f"${payroll_result['commission_total']:.2f}")
-    _add_row(summary_table, "Bonus Total", f"${payroll_result['bonus_total']:.2f}")
     _add_row(summary_table, "Spiffs", f"${payroll_result['spiffs']:.2f}")
     gross_row = _add_row(summary_table, "Gross Pay", f"${payroll_result['gross_pay']:.2f}", bold=True, value_color=TEAL)
     for cell in gross_row:

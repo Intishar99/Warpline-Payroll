@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ campaign.name }} - WarpLine Payroll{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>{{ campaign.name }}</h1>
+    <p class="subtitle">Edit commission rates and the appointments → hourly rate tier table.</p>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label style="display:block; font-size:0.72rem; color: var(--muted); margin: 12px 0 4px;">Campaign Name</label>
+        <input type="text" name="name" value="{{ campaign.name }}" required>
+
+        <div class="field-row" style="margin-top:14px;">
+            <div>
+                <label>$ per Valid Sit</label>
+                <input type="number" step="0.01" min="0" name="sit_commission" value="{{ campaign.sit_commission }}">
+            </div>
+            <div>
+                <label>$ per Sale (in addition to sit)</label>
+                <input type="number" step="0.01" min="0" name="sale_commission" value="{{ campaign.sale_commission }}">
+            </div>
+        </div>
+
+        <h2 style="margin-top:24px;">Tier Table</h2>
+        <p class="muted">At X appointments, the rate becomes $Y/hr. Not yet used to auto-calculate pay — captured for reference until the multi-campaign rate formula is finalized.</p>
+
+        <div id="tier-rows">
+            {% for tier in tiers %}
+            <div class="field-row tier-row" style="margin-bottom:8px;">
+                <div><label>Appointments \u2265</label><input type="number" name="tier_threshold" value="{{ tier.appointments_threshold }}" min="0"></div>
+                <div><label>Hourly Rate ($)</label><input type="number" step="0.01" name="tier_rate" value="{{ tier.hourly_rate }}" min="0"></div>
+            </div>
+            {% endfor %}
+        </div>
+        <button type="button" class="btn secondary" onclick="addTierRow()">+ Add Tier</button>
+
+        <div style="margin-top:24px;">
+            <button class="btn" type="submit">Save Campaign</button>
+            <a class="btn secondary" href="{{ url_for('campaigns_page') }}">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function addTierRow() {
+    const container = document.getElementById('tier-rows');
+    const row = document.createElement('div');
+    row.className = 'field-row tier-row';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `
+        <div><label>Appointments \u2265</label><input type="number" name="tier_threshold" min="0"></div>
+        <div><label>Hourly Rate ($)</label><input type="number" step="0.01" name="tier_rate" min="0"></div>
+    `;
+    container.appendChild(row);
+}
+</script>
+{% endblock %}

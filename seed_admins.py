@@ -1,19 +1,11 @@
 """
-Creates an admin login account. Run this directly -- it's not a web route, and
-there's no signup page in the app on purpose (smaller attack surface for a
-2-account internal tool).
+Creates an admin login account. Run this directly -- not a web route, no signup page
+exists on purpose. Run once per admin account needed.
 
-Usage:
-    python seed_admins.py
+Usage: python seed_admins.py
 
-Run this once per admin account needed (so twice, for the 2 accounts WarpLine
-needs). Works against whichever database DATABASE_URL points to -- run it
-locally against local Postgres/SQLite for testing, or in Render's Shell tab
-to create the real production accounts.
-
-The password is typed interactively (hidden, via getpass) and only the HASH
-gets written to the database. The plaintext never touches this file, never
-gets logged, and never gets committed to git.
+The password is typed interactively (hidden) and only the HASH gets written to the
+database. The plaintext never touches this file, never gets logged, never gets committed.
 """
 
 import getpass
@@ -36,7 +28,6 @@ def main():
         if password != confirm:
             print("Passwords didn't match. Aborting -- run the script again.")
             return
-
         if len(password) < 8:
             print("Password should be at least 8 characters. Aborting.")
             return

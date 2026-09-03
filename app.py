@@ -1,9 +1,9 @@
 import os
 import io
 import zipfile
-from datetime import datetime, date
+from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, url_for, flash, Response, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import check_password_hash
@@ -11,9 +11,9 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
-from models import db, PayPeriod, TimeEntry, CampaignEntry, AdminUser
+from models import db, PayPeriod, TimeEntry, CampaignEntry, AdminUser, Campaign, CampaignTier
 from parsers import parse_raw_payroll_csv
-from calc_engine import DIVISIONS, calc_agent_payroll
+from calc_engine import calc_agent_payroll
 from paystub_generator import generate_paystub_docx
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,12 +21,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-key-change-in-production")
 
-# Render (and most hosts) provide DATABASE_URL for Postgres. Falls back to local
-# SQLite when that's not set, so local dev still works with zero extra setup.
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
-    # SQLAlchemy 1.4+ requires the 'postgresql://' scheme, but Render (and Heroku,
-    # historically) hand back 'postgres://' -- this rewrites it so both work.
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
@@ -50,26 +46,64 @@ def load_user(user_id):
     return AdminUser.query.get(int(user_id))
 
 
+# Pre-filled from the WarpLine Agent Compensation Structure PDF. These are seeded once,
+# on first run, and are fully editable afterward via the Manage Campaigns page -- nothing
+# here is hardcoded into the calculation logic itself, this is just the starting data.
+PDF_CAMPAIGNS = {
+    "Solar": {
+        "sit_commission": 15, "sale_commission": 35,
+        "tiers": [(0,3.00),(6,4.00),(8,5.00),(16,6.00),(24,6.50),(30,7.00),(38,7.50)],
+    },
+    "Roofing IL/IA (Insurance)": {
+        "sit_commission": 10, "sale_commission": 10,
+        "tiers": [(0,3.00),(8,4.00),(12,5.00),(22,6.00),(28,6.50),(36,7.00),(48,7.50)],
+    },
+    "Roofing OK/TX (Insurance)": {
+        "sit_commission": 10, "sale_commission": 10,
+        "tiers": [(0,3.00),(7,4.00),(11,5.00),(21,6.00),(27,6.50),(35,7.00),(47,7.50)],
+    },
+    "Roofing (Retail)": {
+        "sit_commission": 15, "sale_commission": 25,
+        "tiers": [(0,3.00),(6,4.00),(8,5.00),(12,5.50),(16,6.00),(24,6.50),(30,7.00),(38,7.50)],
+    },
+}
+
+
+def seed_campaigns():
+    """Runs once -- if no campaigns exist yet, pre-fill the four from the compensation
+    PDF. Idempotent: does nothing if campaigns already exist (e.g. after an admin has
+    already started editing them)."""
+    if Campaign.query.first() is not None:
+        return
+    for name, data in PDF_CAMPAIGNS.items():
+        campaign = Campaign(name=name, sit_commission=data["sit_commission"], sale_commission=data["sale_commission"])
+        db.session.add(campaign)
+        db.session.flush()
+        for threshold, rate in data["tiers"]:
+            db.session.add(CampaignTier(campaign_id=campaign.id, appointments_threshold=threshold, hourly_rate=rate))
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
+    seed_campaigns()
 
 
 def make_label(start_date, end_date):
-    """e.g. Aug 1 - Aug 10, 2026 (or 'Aug 1 - Sep 3, 2026' across months)"""
     if start_date.month == end_date.month:
         return f"{start_date.strftime('%b %-d')} - {end_date.strftime('%-d, %Y')}"
     return f"{start_date.strftime('%b %-d')} - {end_date.strftime('%b %-d, %Y')}"
 
 
 def get_agent_results(period):
-    """Shared calc helper: returns (payroll_rows, grand_total) for a pay period."""
     time_entries = TimeEntry.query.filter_by(pay_period_id=period.id).order_by(TimeEntry.agent_name).all()
     campaign_entries = CampaignEntry.query.filter_by(pay_period_id=period.id).all()
 
     campaigns_by_agent = {}
     for ce in campaign_entries:
         campaigns_by_agent.setdefault(ce.agent_name, []).append({
-            "division": ce.division,
+            "campaign": ce.campaign,
+            "appointments": ce.appointments,
             "valid_sits": ce.valid_sits,
             "sales": ce.sales,
         })
@@ -88,6 +122,8 @@ def get_agent_results(period):
     return payroll_rows, round(grand_total, 2)
 
 
+# ---------- Auth ----------
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -98,8 +134,6 @@ def login():
         password = request.form.get("password", "")
 
         user = AdminUser.query.filter_by(username=username).first()
-        # Intentionally vague error -- doesn't reveal whether the username or
-        # password was the wrong part, standard practice against credential probing.
         if user is None or not check_password_hash(user.password_hash, password):
             flash("Incorrect username or password.", "error")
             return redirect(url_for("login"))
@@ -117,6 +151,76 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
+# ---------- Campaign management ----------
+
+@app.route("/campaigns")
+@login_required
+def campaigns_page():
+    campaigns = Campaign.query.order_by(Campaign.name).all()
+    return render_template("campaigns.html", campaigns=campaigns)
+
+
+@app.route("/campaigns/new", methods=["POST"])
+@login_required
+def new_campaign():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Campaign name is required.", "error")
+        return redirect(url_for("campaigns_page"))
+    if Campaign.query.filter_by(name=name).first():
+        flash(f"A campaign named '{name}' already exists.", "error")
+        return redirect(url_for("campaigns_page"))
+
+    campaign = Campaign(name=name, sit_commission=0.0, sale_commission=0.0)
+    db.session.add(campaign)
+    db.session.commit()
+    flash(f"Campaign '{name}' created. Add its tier rows and commission rates below.", "success")
+    return redirect(url_for("edit_campaign", campaign_id=campaign.id))
+
+
+@app.route("/campaigns/<int:campaign_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_campaign(campaign_id):
+    campaign = Campaign.query.get_or_404(campaign_id)
+
+    if request.method == "POST":
+        campaign.name = request.form.get("name", campaign.name).strip()
+        campaign.sit_commission = float(request.form.get("sit_commission") or 0)
+        campaign.sale_commission = float(request.form.get("sale_commission") or 0)
+
+        CampaignTier.query.filter_by(campaign_id=campaign.id).delete()
+        thresholds = request.form.getlist("tier_threshold")
+        rates = request.form.getlist("tier_rate")
+        for t, r in zip(thresholds, rates):
+            if t.strip() and r.strip():
+                db.session.add(CampaignTier(
+                    campaign_id=campaign.id,
+                    appointments_threshold=int(t),
+                    hourly_rate=float(r),
+                ))
+        db.session.commit()
+        flash(f"'{campaign.name}' saved.", "success")
+        return redirect(url_for("campaigns_page"))
+
+    tiers = CampaignTier.query.filter_by(campaign_id=campaign.id).order_by(CampaignTier.appointments_threshold).all()
+    return render_template("edit_campaign.html", campaign=campaign, tiers=tiers)
+
+
+@app.route("/campaigns/<int:campaign_id>/delete", methods=["POST"])
+@login_required
+def delete_campaign(campaign_id):
+    campaign = Campaign.query.get_or_404(campaign_id)
+    if CampaignEntry.query.filter_by(campaign_id=campaign.id).first():
+        flash(f"Can't delete '{campaign.name}' -- it has payroll data attached to it.", "error")
+        return redirect(url_for("campaigns_page"))
+    db.session.delete(campaign)
+    db.session.commit()
+    flash(f"Campaign deleted.", "success")
+    return redirect(url_for("campaigns_page"))
+
+
+# ---------- Pay periods ----------
 
 @app.route("/")
 @login_required
@@ -139,7 +243,7 @@ def new_period():
         start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
         end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
     except ValueError:
-        flash("Couldn't read those dates — please try again.", "error")
+        flash("Couldn't read those dates -- please try again.", "error")
         return redirect(url_for("index"))
 
     if end_date < start_date:
@@ -169,22 +273,16 @@ def upload_page(period_id):
             flash(f"Couldn't read that file: {e}", "error")
             return redirect(url_for("upload_page", period_id=period_id))
 
-        # clear any previous upload for this period, then insert fresh
         TimeEntry.query.filter_by(pay_period_id=period.id).delete()
         for _, row in df.iterrows():
-            entry = TimeEntry(
+            db.session.add(TimeEntry(
                 pay_period_id=period.id,
                 agent_name=row["Name"],
-                break_hours=row["Break (t)"],
-                training_hours=row["Training (t)"],
-                lunch_hours=row["Lunch (t)"],
-                manual_dial_hours=row["Manual Dial (t)"],
-                talk_hours=row["Ready:Talk Time"],
-                wait_hours=row["Ready:Wait Time"],
-                wrap_hours=row["Ready:Wrap Time"],
-                total_hours=row["Total Hours"],
-            )
-            db.session.add(entry)
+                break_hours=row["Break (t)"], training_hours=row["Training (t)"],
+                lunch_hours=row["Lunch (t)"], manual_dial_hours=row["Manual Dial (t)"],
+                talk_hours=row["Ready:Talk Time"], wait_hours=row["Ready:Wait Time"],
+                wrap_hours=row["Ready:Wrap Time"], total_hours=row["Total Hours"],
+            ))
         db.session.commit()
         flash(f"Loaded {len(df)} agents from the raw file.", "success")
         return redirect(url_for("entries_page", period_id=period.id))
@@ -197,10 +295,14 @@ def upload_page(period_id):
 def entries_page(period_id):
     period = PayPeriod.query.get_or_404(period_id)
     time_entries = TimeEntry.query.filter_by(pay_period_id=period.id).order_by(TimeEntry.agent_name).all()
+    campaigns = Campaign.query.order_by(Campaign.name).all()
 
     if not time_entries:
         flash("Upload a raw dialer CSV first.", "error")
         return redirect(url_for("upload_page", period_id=period_id))
+    if not campaigns:
+        flash("No campaigns set up yet -- add one on the Manage Campaigns page first.", "error")
+        return redirect(url_for("campaigns_page"))
 
     if request.method == "POST":
         CampaignEntry.query.filter_by(pay_period_id=period.id).delete()
@@ -215,15 +317,17 @@ def entries_page(period_id):
             te.spiffs = float(spiffs_val) if spiffs_val else 0.0
             te.manual_hours = float(manual_hours_val) if manual_hours_val else 0.0
 
-            for div_key in DIVISIONS.keys():
-                sits = request.form.get(f"{safe_name}__{div_key}__sits", "").strip()
-                sales = request.form.get(f"{safe_name}__{div_key}__sales", "").strip()
+            for campaign in campaigns:
+                appt = request.form.get(f"{safe_name}__{campaign.id}__appointments", "").strip()
+                sits = request.form.get(f"{safe_name}__{campaign.id}__sits", "").strip()
+                sales = request.form.get(f"{safe_name}__{campaign.id}__sales", "").strip()
 
-                if sits or sales:
+                if appt or sits or sales:
                     db.session.add(CampaignEntry(
                         pay_period_id=period.id,
                         agent_name=te.agent_name,
-                        division=div_key,
+                        campaign_id=campaign.id,
+                        appointments=int(appt) if appt else 0,
                         valid_sits=int(sits) if sits else 0,
                         sales=int(sales) if sales else 0,
                     ))
@@ -233,14 +337,11 @@ def entries_page(period_id):
 
     existing = {}
     for ce in CampaignEntry.query.filter_by(pay_period_id=period.id).all():
-        existing.setdefault(ce.agent_name, {})[ce.division] = ce
+        existing.setdefault(ce.agent_name, {})[ce.campaign_id] = ce
 
     return render_template(
-        "entries.html",
-        period=period,
-        time_entries=time_entries,
-        divisions=DIVISIONS,
-        existing=existing,
+        "entries.html", period=period, time_entries=time_entries,
+        campaigns=campaigns, existing=existing,
     )
 
 
@@ -255,13 +356,10 @@ def results_page(period_id):
 @app.route("/period/<int:period_id>/export.xlsx")
 @login_required
 def export_xlsx(period_id):
-    """Finalised payroll export, formatted to match the structure of the client's
-    existing sheet (time breakdown columns, per-division sits, hourly rate, totals)."""
     period = PayPeriod.query.get_or_404(period_id)
     time_entries = {te.agent_name: te for te in TimeEntry.query.filter_by(pay_period_id=period.id).all()}
     payroll_rows, grand_total = get_agent_results(period)
-
-    div_keys = list(DIVISIONS.keys())
+    campaigns = Campaign.query.order_by(Campaign.name).all()
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -276,12 +374,13 @@ def export_xlsx(period_id):
         ["Name", "Break (t)", "Training (t)", "Lunch (t)", "Manual Dial (t)",
          "Ready:Talk Time", "Ready:Wait Time", "Ready:Wrap Time", "Manual Hours", "Total Hours",
          "Hourly Rate (USD)", "Total Hours Pay"]
-        + [f"{DIVISIONS[d]['label']} Sits" for d in div_keys]
-        + [f"{DIVISIONS[d]['label']} Sales" for d in div_keys]
-        + ["Commission Total", "Bonus Total", "Bonuses Earned", "Spiffs", "Amount in USD"]
+        + [f"{c.name} Appts" for c in campaigns]
+        + [f"{c.name} Sits" for c in campaigns]
+        + [f"{c.name} Sales" for c in campaigns]
+        + ["Total Appointments", "Commission Total", "Spiffs", "Amount in USD"]
     )
     ws.append(headers)
-    for col_idx, _ in enumerate(headers, start=1):
+    for col_idx in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.font = header_font
         cell.fill = header_fill
@@ -290,37 +389,34 @@ def export_xlsx(period_id):
     row_idx = 2
     for row in payroll_rows:
         te = time_entries[row["name"]]
-        by_div = {c["division"]: c for c in row["campaign_breakdown"]}
+        by_campaign = {c["campaign_name"]: c for c in row["campaign_breakdown"]}
 
         values = [
             te.agent_name, te.break_hours, te.training_hours, te.lunch_hours, te.manual_dial_hours,
             te.talk_hours, te.wait_hours, te.wrap_hours, row["manual_hours"], te.total_hours,
             row["hourly_rate"], row["hours_pay"],
         ]
-        values += [by_div.get(DIVISIONS[d]["label"], {}).get("valid_sits", 0) for d in div_keys]
-        values += [by_div.get(DIVISIONS[d]["label"], {}).get("sales", 0) for d in div_keys]
-        values += [
-            row["commission_total"], row["bonus_total"], "; ".join(row["bonuses_earned"]),
-            row["spiffs"], row["gross_pay"],
-        ]
+        values += [by_campaign.get(c.name, {}).get("appointments", 0) for c in campaigns]
+        values += [by_campaign.get(c.name, {}).get("valid_sits", 0) for c in campaigns]
+        values += [by_campaign.get(c.name, {}).get("sales", 0) for c in campaigns]
+        values += [row["total_appointments"], row["commission_total"], row["spiffs"], row["gross_pay"]]
         ws.append(values)
 
         for col_idx in range(1, len(headers) + 1):
             ws.cell(row=row_idx, column=col_idx).font = body_font
-        money_cols = [11, 12, len(headers) - 3, len(headers) - 2, len(headers)]
-        for money_col in money_cols:
+        for money_col in [11, 12, len(headers) - 2, len(headers) - 1, len(headers)]:
             ws.cell(row=row_idx, column=money_col).number_format = money_fmt
         row_idx += 1
 
     total_col = len(headers)
     ws.cell(row=row_idx + 1, column=total_col - 1, value="TOTAL PAYOUT").font = Font(name="Arial", bold=True, size=10)
-    total_cell = ws.cell(row=row_idx + 1, column=total_col, value=f"=SUM({get_column_letter(total_col)}2:{get_column_letter(total_col)}{row_idx - 1})")
+    total_cell = ws.cell(row=row_idx + 1, column=total_col,
+                          value=f"=SUM({get_column_letter(total_col)}2:{get_column_letter(total_col)}{row_idx - 1})")
     total_cell.font = Font(name="Arial", bold=True, size=10)
     total_cell.number_format = money_fmt
 
     for col_idx, header in enumerate(headers, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = max(12, len(header) * 0.9)
-
     ws.freeze_panes = "B2"
 
     buffer = io.BytesIO()
@@ -328,12 +424,8 @@ def export_xlsx(period_id):
     buffer.seek(0)
 
     filename = f"WarpLine_Payroll_{period.label.replace(' ', '_').replace(',', '')}.xlsx"
-    return send_file(
-        buffer,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=filename,
-    )
+    return send_file(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      as_attachment=True, download_name=filename)
 
 
 @app.route("/period/<int:period_id>/paystubs.zip")
@@ -355,12 +447,7 @@ def download_paystubs(period_id):
 
     zip_buffer.seek(0)
     filename = f"WarpLine_Paystubs_{period.label.replace(' ', '_').replace(',', '')}.zip"
-    return send_file(
-        zip_buffer,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name=filename,
-    )
+    return send_file(zip_buffer, mimetype="application/zip", as_attachment=True, download_name=filename)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,8 @@
 """
 WarpLine Payroll - Duration Parsing
 
-The raw dialer export gives times as free-text strings, e.g.:
-    "4 hours 31 min."
-    "54 min. 35 s."
-    "15 min. 2 s."
-    "-"                 (means zero / not logged)
-
-This converts any of those into decimal hours, rounded to 2dp to match
-the client's existing finalised payroll sheet exactly.
+Converts the raw dialer export's free-text durations ("4 hours 31 min.", "54 min. 35 s.",
+"-") into decimal hours, matching the client's own sheet exactly.
 """
 import re
 import pandas as pd
@@ -33,26 +27,20 @@ def parse_duration_to_hours(value: str) -> float:
     minutes = int(m_match.group(1)) if m_match else 0
     seconds = int(s_match.group(1)) if s_match else 0
 
-    total_hours = hours + minutes / 60 + seconds / 3600
-    return round(total_hours, 2)
+    return round(hours + minutes / 60 + seconds / 3600, 2)
 
 
 TIME_COLUMNS = [
-    "Break (t)",
-    "Training (t)",
-    "Lunch (t)",
-    "Manual Dial (t)",
-    "Ready:Talk Time",
-    "Ready:Wait Time",
-    "Ready:Wrap Time",
+    "Break (t)", "Training (t)", "Lunch (t)", "Manual Dial (t)",
+    "Ready:Talk Time", "Ready:Wait Time", "Ready:Wrap Time",
 ]
 
 
 def parse_raw_payroll_csv(filepath_or_buffer) -> pd.DataFrame:
     """
-    Reads the raw dialer export and returns a clean DataFrame with:
-    Name, one decimal-hours column per TIME_COLUMNS entry, and Total Hours.
-    Skips blank rows and the trailing 'Summary' row.
+    Reads the raw dialer export and returns a DataFrame with decimal-hours columns
+    and Total Hours. Applies the wrap-time rule: if Wrap Time > 2 hours, it's dropped
+    entirely from the total (confirmed rule, not the excess -- the whole wrap time).
     """
     df = pd.read_csv(filepath_or_buffer)
     df = df.dropna(subset=["Name"])
@@ -65,8 +53,10 @@ def parse_raw_payroll_csv(filepath_or_buffer) -> pd.DataFrame:
         else:
             df[col] = 0.0
 
-    df["Total Hours"] = df[TIME_COLUMNS].sum(axis=1).round(2)
+    # Wrap-time rule: over 2 hours -> dropped entirely from the total.
+    df["Ready:Wrap Time (payable)"] = df["Ready:Wrap Time"].apply(lambda w: 0.0 if w > 2 else w)
 
-    # Rows like "Manager", "Taha Yasseen" with all "-" (all-zero) still worked 0 hrs this
-    # period -- keep them, payroll should show $0 rather than silently dropping a name.
+    hour_cols_for_total = [c for c in TIME_COLUMNS if c != "Ready:Wrap Time"] + ["Ready:Wrap Time (payable)"]
+    df["Total Hours"] = df[hour_cols_for_total].sum(axis=1).round(2)
+
     return df[["Name"] + TIME_COLUMNS + ["Total Hours"]].reset_index(drop=True)

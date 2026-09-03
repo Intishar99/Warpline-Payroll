@@ -29,11 +29,9 @@
                 {% endif %}
                 <tr><td class="muted">Hourly rate</td><td>${{ "%.2f"|format(row.hourly_rate) }} / hr</td></tr>
                 <tr><td class="muted">Hours pay</td><td>${{ "%.2f"|format(row.hours_pay) }}</td></tr>
+                <tr><td class="muted">Total appointments (all campaigns)</td><td>{{ row.total_appointments }} <span class="muted">— reference only, not yet used in the rate</span></td></tr>
                 <tr><td class="muted">Commission (sits + sales)</td><td>${{ "%.2f"|format(row.commission_total) }}</td></tr>
                 <tr><td class="muted">Spiffs</td><td>${{ "%.2f"|format(row.spiffs) }}</td></tr>
-                <tr><td class="muted">Bonuses</td><td>${{ "%.2f"|format(row.bonus_total) }}
-                    {% if row.bonuses_earned %}<br><span class="muted">{{ row.bonuses_earned|join(', ') }}</span>{% endif %}
-                </td></tr>
                 <tr><td><strong>Gross pay</strong></td><td><strong>${{ "%.2f"|format(row.gross_pay) }}</strong></td></tr>
             </table>
 
@@ -41,17 +39,17 @@
             <h4 style="margin-top:16px; font-size:0.85rem; color: var(--navy);">Campaign breakdown</h4>
             <table>
                 <thead>
-                    <tr><th>Division</th><th>Sits</th><th>Sales</th><th>Sit Pay</th><th>Sale Pay</th><th>Bonus</th></tr>
+                    <tr><th>Campaign</th><th>Appts</th><th>Sits</th><th>Sales</th><th>Sit Pay</th><th>Sale Pay</th></tr>
                 </thead>
                 <tbody>
                 {% for c in row.campaign_breakdown %}
                     <tr>
-                        <td>{{ c.division }}</td>
+                        <td>{{ c.campaign_name }}</td>
+                        <td>{{ c.appointments }}</td>
                         <td>{{ c.valid_sits }}</td>
                         <td>{{ c.sales }}</td>
                         <td>${{ "%.2f"|format(c.sit_pay) }}</td>
                         <td>${{ "%.2f"|format(c.sale_pay) }}</td>
-                        <td>${{ "%.2f"|format(c.bonus_pay) }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>

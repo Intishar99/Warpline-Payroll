@@ -3,15 +3,15 @@
 {% block content %}
 <div class="card">
     <h1>{{ period.label }}</h1>
-    <p class="subtitle">Step 2 of 3 — Enter pay details, valid sits &amp; sales per campaign for each agent</p>
+    <p class="subtitle">Step 2 of 3 — Enter pay details, appointments, valid sits &amp; sales per campaign for each agent</p>
 </div>
 
 <div class="assumption-note">
-    <strong>Mirrors the client's existing process:</strong> Hourly Rate, Manual Hours, and
-    Spiffs are set directly per agent, same as their current sheet. Manual Hours defaults
-    to 0 and only affects pay if you enter something. An agent can be entered into
-    <strong>more than one campaign</strong> below for commission purposes — leave a
-    division's fields blank if the agent didn't work it this period.
+    <strong>Hourly Rate is still set directly, not auto-calculated.</strong> Appointments
+    are captured per campaign below for record-keeping and for when the rate formula is
+    finalized with the client — they don't affect Gross Pay yet. Manual Hours and Spiffs
+    default to 0 with no effect if left blank. An agent can have entries under
+    <strong>more than one campaign</strong> in the same period.
 </div>
 
 <form method="POST">
@@ -42,22 +42,26 @@
                            value="{{ te.spiffs if te.spiffs else '' }}" placeholder="0.00">
                 </div>
             </div>
-            <p class="muted" style="margin: 8px 0 0 0;">Set directly, same as your existing sheet.</p>
         </div>
 
-        {% for div_key, div in divisions.items() %}
-            {% set current = existing.get(te.agent_name, {}).get(div_key) %}
+        {% for campaign in campaigns %}
+            {% set current = existing.get(te.agent_name, {}).get(campaign.id) %}
             <div class="division-block">
-                <h4>{{ div.label }}</h4>
+                <h4>{{ campaign.name }}</h4>
                 <div class="field-row">
                     <div>
+                        <label>Appointments</label>
+                        <input type="number" min="0" name="{{ safe_name }}__{{ campaign.id }}__appointments"
+                               value="{{ current.appointments if current else '' }}">
+                    </div>
+                    <div>
                         <label>Valid Sits</label>
-                        <input type="number" min="0" name="{{ safe_name }}__{{ div_key }}__sits"
+                        <input type="number" min="0" name="{{ safe_name }}__{{ campaign.id }}__sits"
                                value="{{ current.valid_sits if current else '' }}">
                     </div>
                     <div>
                         <label>Sales</label>
-                        <input type="number" min="0" name="{{ safe_name }}__{{ div_key }}__sales"
+                        <input type="number" min="0" name="{{ safe_name }}__{{ campaign.id }}__sales"
                                value="{{ current.sales if current else '' }}">
                     </div>
                 </div>
